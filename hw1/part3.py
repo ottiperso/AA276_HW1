@@ -59,7 +59,29 @@ def plot_h(fig, ax, px, py, slice, h_fn):
     # you might want to use ax.pcolormesh(.), fig.colorbar(.), and ax.contour(.)
 
     # YOUR CODE HERE
-    pass
+
+    # flatten grid to [npx*npy, 13]
+    # use -1 for one dimension (NumPy auto calcs size based on array total elts)
+    X_flat = X.reshape(-1, 13)
+
+    h_flat = h_fn(X_flat)
+    # output shape [batch_size]
+
+    # reshape back to [npx, npy]
+    H = h_flat.reshape(len(px), len(py))
+
+    # px — x axis coords ; py — y axis coords
+    # H — CBF values at each grid point, for color
+    # cmap='RdYlGn' — red for neg, yellow for ~ zero, green for pos - (unsafe/boundary/safe)
+    col_mesh = ax.pcolormesh(PX.detach().cpu().numpy(), PY.detach().cpu().numpy(), H.detach().cpu().numpy(), cmap='RdYlGn')
+
+    fig.colorbar(col_mesh, ax=ax)
+
+    # H — CBF values to find where zero level set is
+    # levels=[0] — contour line only where h(x) = 0
+
+    ax.contour(PX.detach().cpu().numpy(), PY.detach().cpu().numpy(), H.detach().cpu().numpy(), levels=[0], colors='black')
+
 
 
 from part1 import safe_mask, failure_mask
@@ -107,4 +129,36 @@ def plot_and_eval_xts(fig, ax, x0, u_ref_fn, h_fn, dhdx_fn, gamma, lmbda, nt, dt
     # first, you should compute state trajectories xts using roll_out(.)
 
     # YOUR CODE HERE
-    pass
+
+    batch_size = len(x0[:,0])
+
+
+    xts = roll_out(x0, u_fn, nt, dt)
+
+    for batch in range(batch_size):
+        ax.plot(xts[batch,:,0].detach().cpu().numpy(), xts[batch,:,1].detach().cpu().numpy())
+        
+    safe_init = safe_mask(x0)
+
+    xts_flat = xts.reshape(-1, 13)
+    fail_flat = failure_mask(xts_flat) # flat list of True/False for every state at every timestep
+    fail_org = fail_flat.reshape(batch_size, nt) # reshape to [batch_size, nt] organizes it back so each row is a trajectory, each column is a timestep
+
+    # checks across timestep dim for each trajectory 
+    # -> shape [batch_size], fail_check[i]=True if trajectory i ever entered the failure set
+    fail_check = fail_org.any(dim=1)
+
+    counter_safe = 0
+    counter_violate = 0
+
+    for i, mask in enumerate(safe_init):
+        if mask:
+            # started safe
+            counter_safe += 1
+            if fail_check[i]:
+                # failed at some point
+                counter_violate += 1
+                
+    false_safety_rate = counter_violate / counter_safe
+
+    return false_safety_rate
