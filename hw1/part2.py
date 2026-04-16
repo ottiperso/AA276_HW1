@@ -42,7 +42,13 @@ def euler_step(x, u, dt):
         xn: torch float32 tensor with shape [batch_size, 13]
     """
     # YOUR CODE HERE
-    pass
+
+    # x_dot = f(x) + torch.bmm(g(x), u.unsqueeze(-1)).squeeze(-1)
+    x_dot = f(x) + (g(x) @ u.unsqueeze(-1)).squeeze(-1)
+
+    xn = x + dt*x_dot
+
+    return xn
 
     
 def roll_out(x0, u_fn, nt, dt):
@@ -65,11 +71,22 @@ def roll_out(x0, u_fn, nt, dt):
         xts: torch float32 tensor with shape [batch_size, nt, 13]
     """
     # YOUR CODE HERE
-    pass
+
+    xts = torch.zeros(len(x0[:,0]), nt, 13)
+
+    for step in range(nt):
+        if step == 0:
+            xts[:,step] = euler_step(x0, u_fn(x0), dt)
+        else:
+            xts[:,step] = euler_step(xts[:,step-1], u_fn(xts[:,step-1]), dt)
+
+    return xts
 
 
 import cvxpy as cp
 from part1 import control_limits
+
+import numpy as np
 
 
 def u_qp(x, h, dhdx, u_ref, gamma, lmbda):
@@ -95,4 +112,42 @@ def u_qp(x, h, dhdx, u_ref, gamma, lmbda):
         u_qp: torch float32 tensor with shape [batch_size, 4]
     """
     # YOUR CODE HERE
-    pass
+
+    batch_size = len(x[:,0])
+
+    results = []
+
+    for i in range(batch_size):
+
+        h_i = h[i].detach().cpu().numpy() # scalar
+        dhdx_i = dhdx[i].detach().cpu().numpy() # [13]
+        u_ref_i = u_ref[i].detach().cpu().numpy() # [4]
+        f_i = f(x)[i].detach().cpu().numpy() # [13]
+        g_i = g(x)[i].detach().cpu().numpy() # [13, 4]
+
+        u_i = cp.Variable(4)
+        delta_i = cp.Variable(1)
+
+        h_dot_i = dhdx_i @ f_i + dhdx_i @ g_i @ u_i
+
+        objective = cp.Minimize(cp.sum_squares(u_i - u_ref_i) + lmbda * delta_i**2)
+
+        constraints = [h_dot_i + gamma*h_i + delta_i >= 0,
+                       u_i <= control_limits()[0].detach().cpu().numpy(),
+                       u_i >= control_limits()[1].detach().cpu().numpy(),
+                       delta_i >= 0]
+        
+        prob = cp.Problem(objective, constraints)
+
+        prob.solve()
+
+        # if u_i.value is None:
+        #     results.append(u_ref_i)
+        # else:
+        #     results.append(u_i.value)
+
+        results.append(u_i.value)
+
+    u_qp = torch.tensor(np.stack(results), dtype=torch.float32)
+
+    return u_qp

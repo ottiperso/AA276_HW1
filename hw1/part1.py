@@ -54,7 +54,10 @@ def state_limits():
                       lower: torch float32 tensor with shape [13]
         """
         # YOUR CODE HERE
-        pass
+        upper = torch.tensor([3,3,3,1,1,1,1,5,5,5,5,5,5], dtype=torch.float32)
+        lower = torch.tensor([-3,-3,-3,-1,-1,-1,-1,-5,-5,-5,-5,-5,-5], dtype=torch.float32)
+        
+        return (upper, lower)
 
 
 def control_limits():
@@ -67,7 +70,10 @@ def control_limits():
                   lower: torch float32 tensor with shape [4]
     """
     # YOUR CODE HERE
-    pass
+    upper = torch.tensor([20, 8, 8, 4], dtype=torch.float32)
+    lower = torch.tensor([-20, -8, -8, -4], dtype=torch.float32)
+
+    return (upper, lower)
 
 
 """Note: the following functions operate on batched inputs.""" 
@@ -84,7 +90,19 @@ def safe_mask(x):
         is_safe: torch bool tensor with shape [batch_size]
     """
     # YOUR CODE HERE
-    pass
+
+    batch_size = len(x[:,0])
+
+    is_safe = torch.zeros(batch_size, dtype=torch.bool)
+
+    for i, batch in enumerate(x):
+        condition = torch.sqrt(batch[0]**2 + batch[1]**2)
+        if condition > 2.8:
+            is_safe[i] = True
+        else:
+            is_safe[i] = False
+             
+    return is_safe
 
 
 def failure_mask(x):
@@ -98,7 +116,19 @@ def failure_mask(x):
         is_failure: torch bool tensor with shape [batch_size]
     """
     # YOUR CODE HERE
-    pass
+
+    batch_size = len(x[:,0])
+
+    is_failure = torch.zeros(batch_size, dtype=torch.bool)
+
+    for i, batch in enumerate(x):
+        condition = torch.sqrt(batch[0]**2 + batch[1]**2)
+        if condition < 0.5:
+            is_failure[i] = True
+        else:
+            is_failure[i] = False
+             
+    return is_failure
 
 
 def f(x):
@@ -140,4 +170,18 @@ def g(x):
         g: torch float32 tensor with shape [batch_size, 13, 4]
     """
     # YOUR CODE HERE
-    pass
+
+    PXi, PYi, PZi, QWi, QXi, QYi, QZi, VXi, VYi, VZi, WXi, WYi, WZi = [i for i in range(13)]
+    PX, PY, PZ, QW, QX, QY, QZ, VX, VY, VZ, WX, WY, WZ = [x[:, i] for i in range(13)]
+    Fi, AXi, AYi, AZi = [i for i in range(4)]
+
+    g = torch.zeros(*x.shape, 4, dtype=torch.float32)
+
+    g[:, VXi, Fi] = 2*(QW*QY + QX*QZ)
+    g[:, VYi, Fi] = 2*(QY*QZ - QW*QX)
+    g[:, VZi, Fi] = 2*(0.5 - QX**2 - QY**2)
+    g[:, WXi, AXi] = 1
+    g[:, WYi, AYi] = 1
+    g[:, WZi, AZi] = 1
+
+    return g
